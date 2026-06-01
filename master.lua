@@ -719,6 +719,9 @@ local function mBtn(label,x1,y1,x2,y2,action,isActive,col)
     mSet(C.value,C.bg)
     table.insert(touchButtons,{x1=x1,y1=y1,x2=x2,y2=y2,action=action})
 end
+local function addButton(x1,y1,x2,y2,action)
+    table.insert(touchButtons,{x1=x1,y1=y1,x2=x2,y2=y2,action=action})
+end
 
 local function drawDashboard()
     if terminalActive then return end
