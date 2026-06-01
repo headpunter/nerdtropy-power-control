@@ -86,8 +86,8 @@ local function loadState()
         if ok and type(data) == "table" then
             slaves = data.slaves or {}
             nextSerial = data.nextSerial or nextSerial
-            for _, s in pairs(slaves) do
-                s.lastSeen=0; s.online=false; s.data={}
+            for uuid, s in pairs(slaves) do
+                s.lastSeen=0; s.online=false; s.data={}; s._uuid=uuid
             end
         end
     end
