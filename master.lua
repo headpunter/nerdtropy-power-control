@@ -34,6 +34,7 @@ local TURN_OFF_PERCENT = 90
 local POLL_INTERVAL    = 1
 local SLAVE_TIMEOUT    = 10
 local PING_INTERVAL    = 10
+local TURBINE_OVERSPEED_MARGIN = 200  -- RPM above target that triggers steam cutoff
 local STATE_DIR        = "/pwr"
 local REGISTRY_FILE    = STATE_DIR .. "/registry.dat"
 local CONFIG_FILE      = STATE_DIR .. "/config.dat"
@@ -320,25 +321,35 @@ local function applyTurbineControl()
             local rpm     = s.data.rpm or 0
             local engaged = s.data.inductorEngaged
             local tgt     = s.targetRpm or 1800
+            local current = s.data.steamIn or 0
+            local maxFlow = s.data.steamMaxMax or 0
 
-            -- inductor lifecycle
-            if rpm >= tgt and engaged == false then
-                commandSlave(uuid,"set_inductor",{state=true})
-            elseif rpm < 50 and engaged == true then
-                commandSlave(uuid,"set_inductor",{state=false})
-            end
+            if rpm > tgt + TURBINE_OVERSPEED_MARGIN then
+                -- Overspeed: cut steam immediately, keep inductor on to brake
+                if current > 0 then
+                    commandSlave(uuid,"set_flow_rate",{rate=0})
+                end
+                if engaged == false then
+                    commandSlave(uuid,"set_inductor",{state=true})
+                end
+            else
+                -- Normal inductor lifecycle
+                if rpm >= tgt and engaged == false then
+                    commandSlave(uuid,"set_inductor",{state=true})
+                elseif rpm < 50 and engaged == true then
+                    commandSlave(uuid,"set_inductor",{state=false})
+                end
 
-            -- flow rate tuning: step toward target RPM (dead band ±30 RPM)
-            if s.data.active and s.data.assembled then
-                local current = s.data.steamIn or 0
-                local maxFlow = s.data.steamMaxMax or 0
-                local err = tgt - rpm
-                if math.abs(err) > 30 then
-                    local step = math.min(50, math.max(1, math.abs(err) * 0.15))
-                    local newRate = current + (err > 0 and step or -step)
-                    newRate = math.max(0, math.min(maxFlow, newRate))
-                    if math.abs(newRate - current) >= 1 then
-                        commandSlave(uuid,"set_flow_rate",{rate=math.floor(newRate)})
+                -- Flow rate tuning: proportional step toward target (dead band ±30 RPM)
+                if s.data.active and s.data.assembled and maxFlow > 0 then
+                    local err = tgt - rpm
+                    if math.abs(err) > 30 then
+                        local step = math.min(200, math.max(1, math.abs(err) * 0.3))
+                        local newRate = current + (err > 0 and step or -step)
+                        newRate = math.max(0, math.min(maxFlow, newRate))
+                        if math.abs(newRate - current) >= 1 then
+                            commandSlave(uuid,"set_flow_rate",{rate=math.floor(newRate)})
+                        end
                     end
                 end
             end
