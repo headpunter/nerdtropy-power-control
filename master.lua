@@ -13,7 +13,7 @@
 -- WIRING: Ender Modem LEFT, Advanced Monitor (6x4) RIGHT
 -- ============================================================
 
-local VERSION         = "2.5"
+local VERSION         = "2.6"
 local MODEM_SIDE      = "left"
 local MONITOR_SIDE    = "right"
 local PROTOCOL        = "nerdtropy_power"

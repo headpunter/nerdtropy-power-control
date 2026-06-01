@@ -5,7 +5,7 @@
 -- Accepts single-message file update from master, reboots.
 -- ============================================================
 
-local VERSION            = "2.5"
+local VERSION            = "2.6"
 local MODEM_SIDE         = "left"
 local PERIPHERAL_SIDE    = "back"
 local REDSTONE_SIDE      = "right"
