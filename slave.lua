@@ -5,7 +5,7 @@
 -- Accepts single-message file update from master, reboots.
 -- ============================================================
 
-local VERSION            = "2.4"
+local VERSION            = "2.5"
 local MODEM_SIDE         = "left"
 local PERIPHERAL_SIDE    = "back"
 local REDSTONE_SIDE      = "right"
@@ -173,6 +173,12 @@ local function executeCommand(action, params)
             pcall(periph.setInductorEngaged, params.state==true)
         end
         log("Inductor -> "..tostring(params.state))
+        return true
+    elseif action == "set_flow_rate" then
+        if type(periph.setFluidFlowRate)=="function" then
+            pcall(periph.setFluidFlowRate, params.rate)
+        end
+        log("Flow rate -> "..tostring(params.rate).." mB/t")
         return true
     elseif action == "scram" then
         if role=="reactor" and type(periph.setActive)=="function" then

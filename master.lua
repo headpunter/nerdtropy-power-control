@@ -13,7 +13,7 @@
 -- WIRING: Ender Modem LEFT, Advanced Monitor (6x4) RIGHT
 -- ============================================================
 
-local VERSION         = "2.4"
+local VERSION         = "2.5"
 local MODEM_SIDE      = "left"
 local MONITOR_SIDE    = "right"
 local PROTOCOL        = "nerdtropy_power"
@@ -62,6 +62,7 @@ local commandsSent   = 0
 local desiredReactorState = nil
 local commandedSlaves = {}
 local lastPingTime = 0
+local turbinePage = 0
 
 -- Update state (shown in terminal)
 local githubVersion   = nil   -- version string from GitHub, nil = not yet checked
@@ -109,7 +110,7 @@ local function saveRegistry()
     ensureDir()
     local p = {}
     for uuid, s in pairs(slaves) do
-        p[uuid] = {id=s.id,role=s.role,ptype=s.ptype,name=s.name}
+        p[uuid] = {id=s.id,role=s.role,ptype=s.ptype,name=s.name,targetRpm=s.targetRpm}
     end
     local h = fs.open(REGISTRY_FILE, "w")
     h.write(textutils.serialize({slaves=p,nextSerial=nextSerial}))
@@ -313,16 +314,33 @@ local function applyMode()
     end
 end
 
-local function applyTurbineInductors()
+local function applyTurbineControl()
     for uuid,s in pairs(slaves) do
         if s.role=="turbine" and s.online and s.data then
-            local rpm = s.data.rpm or 0
+            local rpm     = s.data.rpm or 0
             local engaged = s.data.inductorEngaged
-            if rpm >= 1800 and engaged == false then
+            local tgt     = s.targetRpm or 1800
+
+            -- inductor lifecycle
+            if rpm >= tgt and engaged == false then
                 commandSlave(uuid,"set_inductor",{state=true})
             elseif rpm < 50 and engaged == true then
-                -- turbine fully stopped: disengage for faster next spin-up
                 commandSlave(uuid,"set_inductor",{state=false})
+            end
+
+            -- flow rate tuning: step toward target RPM (dead band ±30 RPM)
+            if s.data.active and s.data.assembled then
+                local current = s.data.steamIn or 0
+                local maxFlow = s.data.steamMaxMax or 0
+                local err = tgt - rpm
+                if math.abs(err) > 30 then
+                    local step = math.min(50, math.max(1, math.abs(err) * 0.15))
+                    local newRate = current + (err > 0 and step or -step)
+                    newRate = math.max(0, math.min(maxFlow, newRate))
+                    if math.abs(newRate - current) >= 1 then
+                        commandSlave(uuid,"set_flow_rate",{rate=math.floor(newRate)})
+                    end
+                end
             end
         end
     end
@@ -662,10 +680,11 @@ local function colorForTemp(t,isActive)
         return C.ok
     end
 end
-local function colorForRpm(rpm)
+local function colorForRpm(rpm, target)
     if rpm==nil or rpm==0 then return C.flowZero end
-    local off=math.abs(rpm-1800)
-    if off<100 then return C.ok elseif off<300 then return C.warn else return C.crit end
+    target = target or 1800
+    local off=math.abs(rpm-target)
+    if off<=30 then return C.ok elseif off<200 then return C.warn else return C.crit end
 end
 local function colorForEff(e)
     if e==nil then return C.flowZero end
@@ -796,25 +815,44 @@ local function drawDashboard()
     if rRow==0 then mWrite(3,rY+3,"(no reactors connected)",C.flowZero) end
 
     local tY=rY+9
+    local allTurbines=getTurbines()
+    local tTotal=#allTurbines
+    local tPages=math.max(1,math.ceil(tTotal/4))
+    if turbinePage>=tPages then turbinePage=tPages-1 end
     mBox(2,tY,w-1,tY+6,C.border)
     mWrite(4,tY," TURBINES ",C.label)
-    mWrite(3,tY+1,"Name",C.label); mWrite(15,tY+1,"RPM",C.label)
-    mWrite(23,tY+1,"Steam",C.label); mWrite(38,tY+1,"Output",C.label)
-    mWrite(50,tY+1,"Eff%",C.label); mWrite(58,tY+1,"Ind",C.label)
-    local tRow=0
-    for _,s in ipairs(getTurbines()) do
-        if tRow<4 then
-            local y=tY+2+tRow; local on=s.online
-            mWrite(3,y,s.name,on and C.value or C.stale)
-            mWrite(15,y,on and string.format("%.0f",s.data.rpm or 0) or "--",on and colorForRpm(s.data.rpm) or C.stale)
-            mWrite(23,y,on and string.format("%.0f/%.0f",s.data.steamIn or 0,s.data.steamMax or 0) or "--",on and C.value or C.stale)
-            mWrite(38,y,on and formatRawFE(s.data.output or 0).."/t" or "--",on and C.value or C.stale)
-            mWrite(50,y,on and (s.data.bladeEfficiency and string.format("%.0f%%",s.data.bladeEfficiency) or "?") or "--",on and colorForEff(s.data.bladeEfficiency) or C.stale)
-            mWrite(58,y,on and (s.data.inductorEngaged and "ON" or "OFF") or "--",on and (s.data.inductorEngaged and C.ok or C.flowZero) or C.stale)
-            tRow=tRow+1
-        end
+    if tTotal>4 then
+        local pageLabel=string.format(" %d/%d ",turbinePage+1,tPages)
+        local px=w-1-#pageLabel-3
+        mWrite(px,tY,pageLabel,C.label)
+        addButton(px-2,tY,px-2,tY,"turb_page_prev","<")
+        mWrite(px-2,tY,"<",turbinePage>0 and C.value or C.stale)
+        addButton(w-2,tY,w-2,tY,"turb_page_next",">")
+        mWrite(w-2,tY,">",turbinePage<tPages-1 and C.value or C.stale)
     end
-    if tRow==0 then mWrite(3,tY+3,"(no turbines connected)",C.flowZero) end
+    mWrite(3,tY+1,"Name",C.label); mWrite(15,tY+1,"RPM",C.label)
+    mWrite(23,tY+1,"Steam",C.label); mWrite(37,tY+1,"Output",C.label)
+    mWrite(48,tY+1,"Eff%",C.label); mWrite(54,tY+1,"Ind",C.label)
+    mWrite(59,tY+1,"Tgt",C.label)
+    local tRow=0
+    local tStart=turbinePage*4+1
+    for i=tStart, math.min(tStart+3, tTotal) do
+        local s=allTurbines[i]
+        local y=tY+2+tRow; local on=s.online
+        local tgt=s.targetRpm or 1800
+        mWrite(3,y,s.name,on and C.value or C.stale)
+        mWrite(15,y,on and string.format("%.0f",s.data.rpm or 0) or "--",on and colorForRpm(s.data.rpm,tgt) or C.stale)
+        mWrite(23,y,on and string.format("%.0f/%.0f",s.data.steamIn or 0,s.data.steamMax or 0) or "--",on and C.value or C.stale)
+        mWrite(37,y,on and formatRawFE(s.data.output or 0).."/t" or "--",on and C.value or C.stale)
+        mWrite(48,y,on and (s.data.bladeEfficiency and string.format("%.0f%%",s.data.bladeEfficiency) or "?") or "--",on and colorForEff(s.data.bladeEfficiency) or C.stale)
+        mWrite(54,y,on and (s.data.inductorEngaged and "ON" or "OFF") or "--",on and (s.data.inductorEngaged and C.ok or C.flowZero) or C.stale)
+        local tgtLabel=tostring(tgt)
+        local tgtColor=on and colorForRpm(s.data.rpm,tgt) or C.stale
+        mWrite(59,y,tgtLabel,tgtColor)
+        addButton(59,y,59+#tgtLabel-1,y,"turb_tgt_"..s._uuid)
+        tRow=tRow+1
+    end
+    if tTotal==0 then mWrite(3,tY+3,"(no turbines connected)",C.flowZero) end
 
     local stY=tY+8
     local prod=getTotalSteamProd(); local cons2=getTotalSteamCons(); local diff=prod-cons2
@@ -873,6 +911,18 @@ local function handleTouch(x,y)
             elseif a=="on_down"    then TURN_ON_PERCENT=math.max(5,TURN_ON_PERCENT-5)
             elseif a=="off_up"     then TURN_OFF_PERCENT=math.min(99,TURN_OFF_PERCENT+5)
             elseif a=="off_down"   then TURN_OFF_PERCENT=math.max(TURN_ON_PERCENT+10,TURN_OFF_PERCENT-5)
+            elseif a=="turb_page_prev" then
+                turbinePage=math.max(0,turbinePage-1)
+            elseif a=="turb_page_next" then
+                local tPages=math.max(1,math.ceil(#getTurbines()/4))
+                turbinePage=math.min(tPages-1,turbinePage+1)
+            elseif a:sub(1,9)=="turb_tgt_" then
+                local uuid=a:sub(10)
+                if slaves[uuid] then
+                    local s=slaves[uuid]
+                    s.targetRpm = (s.targetRpm==1800) and 900 or 1800
+                    saveRegistry()
+                end
             elseif a=="emergency"  then
                 mode="OFF"; desiredReactorState=false; commandedSlaves={}
                 for uuid,s in pairs(slaves) do
@@ -910,7 +960,8 @@ local function handleHello(senderId, msg)
     local newUuid=genUuid()
     local newName=assignName(msg.role or "unknown")
     slaves[newUuid]={id=senderId,role=msg.role,ptype=msg.ptype,name=newName,
-        lastSeen=os.epoch("utc"),online=true,data={},_uuid=newUuid,slaveVersion=msg.version}
+        lastSeen=os.epoch("utc"),online=true,data={},_uuid=newUuid,slaveVersion=msg.version,
+        targetRpm=(msg.role=="turbine" and 1800 or nil)}
     saveRegistry()
     rednet.send(senderId,{type="WELCOME",uuid=newUuid,name=newName},PROTOCOL)
 end
@@ -1001,7 +1052,7 @@ local function controlLoop()
     while true do
         refreshOnline()
         applyMode()
-        applyTurbineInductors()
+        applyTurbineControl()
         drawDashboard()
         saveConfig()
         local now=os.epoch("utc")
