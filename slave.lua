@@ -5,7 +5,7 @@
 -- Accepts single-message file update from master, reboots.
 -- ============================================================
 
-local VERSION            = "2.3"
+local VERSION            = "2.4"
 local MODEM_SIDE         = "left"
 local PERIPHERAL_SIDE    = "back"
 local REDSTONE_SIDE      = "right"
@@ -162,11 +162,17 @@ local function executeCommand(action, params)
         return true
     elseif action == "set_turbine" then
         if type(periph.setActive)=="function" then pcall(periph.setActive, params.state==true) end
+        if params.inductor ~= nil and type(periph.setInductorEngaged)=="function" then
+            pcall(periph.setInductorEngaged, params.inductor==true)
+        end
+        redstone.setOutput(REDSTONE_SIDE, params.state==true)
+        log("Turbine -> "..tostring(params.state).." inductor="..(params.inductor==nil and "unchanged" or tostring(params.inductor)))
+        return true
+    elseif action == "set_inductor" then
         if type(periph.setInductorEngaged)=="function" then
             pcall(periph.setInductorEngaged, params.state==true)
         end
-        redstone.setOutput(REDSTONE_SIDE, params.state==true)
-        log("Turbine -> "..tostring(params.state))
+        log("Inductor -> "..tostring(params.state))
         return true
     elseif action == "scram" then
         if role=="reactor" and type(periph.setActive)=="function" then

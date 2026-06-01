@@ -13,7 +13,7 @@
 -- WIRING: Ender Modem LEFT, Advanced Monitor (6x4) RIGHT
 -- ============================================================
 
-local VERSION         = "2.3"
+local VERSION         = "2.4"
 local MODEM_SIDE      = "left"
 local MONITOR_SIDE    = "right"
 local PROTOCOL        = "nerdtropy_power"
@@ -299,9 +299,31 @@ local function applyMode()
     if desiredReactorState==nil then return end
 
     for uuid,s in pairs(slaves) do
-        if s.role=="reactor" and s.online and not commandedSlaves[uuid] then
-            commandSlave(uuid,"set_reactor",{state=desiredReactorState})
-            commandedSlaves[uuid]=true
+        if s.online and not commandedSlaves[uuid] then
+            if s.role=="reactor" then
+                commandSlave(uuid,"set_reactor",{state=desiredReactorState})
+                commandedSlaves[uuid]=true
+            elseif s.role=="turbine" then
+                -- inductor param intentionally omitted: coils stay engaged on shutdown
+                -- for residual spin-down harvest; applyTurbineInductors handles coil state
+                commandSlave(uuid,"set_turbine",{state=desiredReactorState})
+                commandedSlaves[uuid]=true
+            end
+        end
+    end
+end
+
+local function applyTurbineInductors()
+    for uuid,s in pairs(slaves) do
+        if s.role=="turbine" and s.online and s.data then
+            local rpm = s.data.rpm or 0
+            local engaged = s.data.inductorEngaged
+            if rpm >= 1800 and engaged == false then
+                commandSlave(uuid,"set_inductor",{state=true})
+            elseif rpm < 50 and engaged == true then
+                -- turbine fully stopped: disengage for faster next spin-up
+                commandSlave(uuid,"set_inductor",{state=false})
+            end
         end
     end
 end
@@ -979,6 +1001,7 @@ local function controlLoop()
     while true do
         refreshOnline()
         applyMode()
+        applyTurbineInductors()
         drawDashboard()
         saveConfig()
         local now=os.epoch("utc")
