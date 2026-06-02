@@ -263,6 +263,7 @@ local function sendHello()
     rednet.send(masterId, {
         type="HELLO", role=role, ptype=ptype,
         uuid=myUuid, version=VERSION, cachedCommand=cachedCommand,
+        methods=peripheral.getMethods(PERIPHERAL_SIDE),
     }, PROTOCOL)
     return true
 end
