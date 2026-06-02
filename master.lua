@@ -13,7 +13,7 @@
 -- WIRING: Ender Modem LEFT, Advanced Monitor (6x4) RIGHT
 -- ============================================================
 
-local VERSION         = "2.6"
+local VERSION         = "2.7"
 local MODEM_SIDE      = "left"
 local MONITOR_SIDE    = "right"
 local PROTOCOL        = "nerdtropy_power"
@@ -23,9 +23,9 @@ local MASTER_HOSTNAME = "power_master"
 -- GITHUB CONFIG
 -- Set these to your repo's raw content URLs
 -- ============================================================
-local GITHUB_SLAVE_URL   = "https://raw.githubusercontent.com/headpunter/nerdtropy-power-control/main/slave.lua"
-local GITHUB_MASTER_URL  = "https://raw.githubusercontent.com/headpunter/nerdtropy-power-control/main/master.lua"
-local GITHUB_VERSION_URL = "https://raw.githubusercontent.com/headpunter/nerdtropy-power-control/main/version.txt"
+local GITHUB_SLAVE_URL   = "http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project/raw/branch/main/slave.lua"
+local GITHUB_MASTER_URL  = "http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project/raw/branch/main/master.lua"
+local GITHUB_VERSION_URL = "http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project/raw/branch/main/version.txt"
 -- version.txt in your repo should contain just a version string matching VERSION above
 -- e.g.: 2.3
 
