@@ -7,7 +7,7 @@
 -- OTA updates pulled from Gitea on every boot.
 -- ============================================================
 
-local VERSION          = "3.2"
+local VERSION          = "3.3"
 local API_HOST         = "http://10.10.0.10:8000"
 local GITEA_RAW        = "http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project/raw/branch/main"
 local MONITOR_SIDE     = "right"
@@ -258,8 +258,8 @@ local function executeCommand(action, params, periph, myRole, cachedCmd)
         log("Inductor -> " .. tostring(params.state))
 
     elseif action == "set_flow_rate" then
-        if type(periph.setFluidFlowRate) == "function" then
-            pcall(periph.setFluidFlowRate, params.rate)
+        if type(periph.setFluidFlowRateMax) == "function" then
+            pcall(periph.setFluidFlowRateMax, params.rate)
         end
         log("Flow rate -> " .. tostring(params.rate) .. " mB/t")
 
