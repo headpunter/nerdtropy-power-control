@@ -4,24 +4,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Nerdtropy Power Control** — A CC:Tweaked Lua system for managing distributed Minecraft power networks on a NeoForge 1.21.1 ATM10 server. Uses Ender Modems for wireless rednet communication.
+**Nerdtropy Power Control** — A CC:Tweaked Lua + Docker system for managing distributed Minecraft power networks on a NeoForge 1.21.1 ATM10 server. No modems required — all communication is HTTP to the Docker API.
 
-Two files make up the entire system:
-- **`master.lua`** — Central controller: aggregates telemetry, drives the monitor dashboard, applies control logic, deploys OTA updates
-- **`slave.lua`** — Worker node: wraps a single peripheral, sends telemetry, executes commands from master
+One Lua file runs on every node:
+- **`startup.lua`** — Auto-detects role on boot. Monitor on right → Display mode. Any other peripheral → Slave/worker mode.
+
+The Docker stack handles all control logic:
+- **`api/`** — FastAPI on port 8000. Receives telemetry, issues commands with reasons, stores history.
+- **Gitea** (`10.10.0.10:30008`) — OTA source. `startup.lua` fetches `version.txt` on every boot and self-updates if behind.
+- **InfluxDB** (port 8086) — Time-series metrics (battery %, RPM, FE/t).
+- **Loki** (port 3100) — Structured decision log (why each command was sent).
+- **Grafana** (port 30037, standalone) — Dashboards for metrics and decision log.
 
 ## Deployment
 
-No build step. Copy files to CC:Tweaked computers and rename to `startup`:
+No build step. Copy `startup.lua` to every CC:Tweaked computer as `/startup`. Reboot to start.
 
 ```
-master.lua  →  startup  (Advanced Computer, computer ID 2 on the server)
-slave.lua   →  startup  (one Computer per peripheral)
+startup.lua  →  /startup  (all nodes — role auto-detected from peripherals)
 ```
 
-**Hardware wiring convention:** modem=left, peripheral=back, redstone output=right (applies to all nodes).
+**Hardware wiring convention:** peripheral=back (or any side), redstone output=right, monitor=right (display-only computers).
 
-Master requires an Advanced Monitor (6-wide × 4-tall array) on the right. Reboot each computer to start.
+Display computer requires an Advanced Monitor (6-wide × 4-tall array) on the right. All other computers become slave workers.
+
+Spin up the Docker stack on `10.10.0.10`:
+```
+docker compose up -d
+```
 
 ## Architecture
 
