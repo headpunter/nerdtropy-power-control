@@ -123,12 +123,23 @@ class ControlEngine:
         desired, reason = self._compute_desired_state()
 
         # ── Hard overspeed safety (always checked, even during tuning) ─────
-        if rpm > target * OVERSPEED_PCT and steam_in > 0 and steam_max > 0:
-            return {
-                "action": "set_flow_rate",
-                "params": {"rate": 0},
-                "reason": f"OVERSPEED: {rpm:.0f} RPM > {target * OVERSPEED_PCT:.0f} — cutting steam",
-            }
+        if rpm > target * OVERSPEED_PCT:
+            # Engage coils first — they're a faster brake than cutting steam
+            if engaged is not True:
+                # Also snap tune phase to braking so racing doesn't re-open steam
+                if slave.tune_phase in ("racing", "needs_tune"):
+                    self.db.set_tune_state(slave.uuid, "braking", rpm=rpm, stable=0)
+                return {
+                    "action": "set_inductor",
+                    "params": {"state": True},
+                    "reason": f"OVERSPEED: {rpm:.0f} RPM > {target * OVERSPEED_PCT:.0f} — engaging coils",
+                }
+            if steam_in > 0 and steam_max > 0:
+                return {
+                    "action": "set_flow_rate",
+                    "params": {"rate": 0},
+                    "reason": f"OVERSPEED: {rpm:.0f} RPM > {target * OVERSPEED_PCT:.0f} — cutting steam (coils already on)",
+                }
 
         # ── Mode=OFF: controlled shutdown ──────────────────────────────────
         if desired is False and self.db.get_config_value("mode") == "OFF":
@@ -212,8 +223,17 @@ class ControlEngine:
 
         # ── racing: coils OFF, full steam, watch RPM climb ────────────────
         if phase == "racing":
-            # Coils must be off — if somehow on, cut them
-            if engaged is not False:
+            # Check RPM threshold FIRST — don't let coil enforcement block the transition
+            if rpm >= 1800:
+                self.db.set_tune_state(slave.uuid, "braking", rpm=rpm, stable=0)
+                return {
+                    "action": "set_inductor",
+                    "params": {"state": True},
+                    "reason": f"Auto-tune: RPM {rpm:.0f} reached 1800 — engaging coils as primary brake",
+                }
+
+            # Coils must be off during climb — only force if we KNOW they're on
+            if engaged is True:
                 return {
                     "action": "set_inductor",
                     "params": {"state": False},
@@ -225,15 +245,6 @@ class ControlEngine:
                     "action": "set_flow_rate",
                     "params": {"rate": int(steam_max)},
                     "reason": f"Auto-tune racing: holding max steam, RPM {rpm:.0f}",
-                }
-
-            # Hit 1800 — engage coils as primary brake
-            if rpm >= 1800:
-                self.db.set_tune_state(slave.uuid, "braking", rpm=rpm, stable=0)
-                return {
-                    "action": "set_inductor",
-                    "params": {"state": True},
-                    "reason": f"Auto-tune: RPM {rpm:.0f} reached 1800 — engaging coils as primary brake",
                 }
 
             # Stall detection: track if RPM stopped moving below threshold
