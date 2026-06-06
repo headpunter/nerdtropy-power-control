@@ -85,6 +85,8 @@ async def report(req: ReportRequest):
         return {"uuid": slave.uuid, "name": slave.name, "role": slave.role, "command": None}
 
     # --- Regular telemetry ---
+    if req.peripherals:
+        db.register_slave(req.uuid, req.computer_id, req.peripherals, req.version)
     db.update_slave_data(req.uuid, req.data or {}, req.version)
     slave = db.get_slave(req.uuid)
     push_metrics(slave)

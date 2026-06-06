@@ -267,6 +267,8 @@ class Database:
                 "last_commanded_action": s.last_commanded_action,
                 "last_commanded_state": s.last_commanded_state,
                 "target_rpm": s.target_rpm,
+                "tune_phase": s.tune_phase,
+                "peripherals": s.peripherals,
             }
         return result
 

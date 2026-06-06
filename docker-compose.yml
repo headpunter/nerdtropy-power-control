@@ -8,6 +8,7 @@ services:
       - "8000:8000"
     volumes:
       - api_data:/data
+      - ./api:/app
     environment:
       LOKI_URL: "http://loki:3100"
       INFLUXDB_URL: "http://influxdb:8086"
