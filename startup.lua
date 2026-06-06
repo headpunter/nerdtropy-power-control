@@ -30,7 +30,7 @@ local function apiPost(path, payload)
         textutils.serialiseJSON(payload),
         {["Content-Type"] = "application/json"}
     )
-    if not ok or not response then return nil end
+    if not ok or not response or type(response) ~= "table" then return nil end
     local ok2, body = pcall(textutils.unserialiseJSON, response.readAll())
     response.close()
     return ok2 and body or nil
@@ -38,7 +38,7 @@ end
 
 local function apiGet(path)
     local ok, response = pcall(http.get, API_HOST .. path)
-    if not ok or not response then return nil end
+    if not ok or not response or type(response) ~= "table" then return nil end
     local ok2, body = pcall(textutils.unserialiseJSON, response.readAll())
     response.close()
     return ok2 and body or nil
