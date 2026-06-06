@@ -7,7 +7,7 @@
 -- OTA updates pulled from Gitea on every boot.
 -- ============================================================
 
-local VERSION          = "3.1"
+local VERSION          = "3.2"
 local API_HOST         = "http://10.10.0.10:8000"
 local GITEA_RAW        = "http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project/raw/branch/main"
 local MONITOR_SIDE     = "right"
@@ -396,12 +396,13 @@ local function runDisplay()
     local monW, monH = mon.getSize()
     print("Monitor: " .. monW .. "x" .. monH)
 
-    local startTime  = os.epoch("utc")
-    local genHistory = {}
-    local useHistory = {}
-    local histMaxLen = 60
-    local turbinePage = 0
+    local startTime    = os.epoch("utc")
+    local genHistory   = {}
+    local useHistory   = {}
+    local histMaxLen   = 60
+    local turbinePage  = 0
     local touchButtons = {}
+    local latestVersion = nil
 
     local state = {
         slaves = {},
@@ -765,9 +766,12 @@ local function runDisplay()
         mBtn(" EMERGENCY STOP ", w-19, cY, w-2, cY+3, "emergency", false, C.btnEmergency)
 
         local uptime = (os.epoch("utc") - startTime) / 1000
-        mWrite(2, h, string.format("v%s | Up: %s | API cmds: %d | %s",
-            VERSION, formatUptime(uptime), state.commands_sent or 0,
-            textutils.formatTime(os.time(), true)), C.label)
+        local vColor = latestVersion and latestVersion ~= VERSION and C.warn or C.label
+        mWrite(2, h, string.format("v%s%s | Up: %s | API cmds: %d | %s",
+            VERSION,
+            latestVersion and latestVersion ~= VERSION and (" (update " .. latestVersion .. ")") or "",
+            formatUptime(uptime), state.commands_sent or 0,
+            textutils.formatTime(os.time(), true)), vColor)
     end
 
     local function handleTouch(x, y)
@@ -828,7 +832,19 @@ local function runDisplay()
         end
     end
 
-    parallel.waitForAny(displayLoop, touchLoop)
+    local function versionCheckLoop()
+        while true do
+            local ok, r = pcall(http.get, GITEA_RAW .. "/version.txt")
+            if ok and r and type(r) == "table" then
+                local v = r.readAll():match("^%s*(.-)%s*$")
+                r.close()
+                latestVersion = v
+            end
+            sleep(300)  -- check every 5 minutes
+        end
+    end
+
+    parallel.waitForAny(displayLoop, touchLoop, versionCheckLoop)
 end
 
 -- ============================================================
