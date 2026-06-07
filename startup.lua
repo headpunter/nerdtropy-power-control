@@ -7,7 +7,7 @@
 -- OTA updates pulled from Gitea on every boot.
 -- ============================================================
 
-local VERSION          = "3.5"
+local VERSION          = "3.6"
 local API_HOST         = "http://10.10.0.10:8000"
 local GITEA_RAW        = "http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project/raw/branch/main"
 local MONITOR_SIDE     = "right"
@@ -276,14 +276,18 @@ local function verifyPeripheral(p, role, reportFn)
 
     if role == "turbine" then
         -- Verify all getters respond
-        check("getActive",            function() assert(p.getActive() ~= nil) end)
-        check("getRotorSpeed",        function() assert(p.getRotorSpeed() ~= nil) end)
-        check("getInductorEngaged",   function() assert(p.getInductorEngaged() ~= nil) end)
-        check("getFluidFlowRateMax",  function() assert(p.getFluidFlowRateMax() ~= nil) end)
+        check("getActive",              function() assert(p.getActive() ~= nil) end)
+        check("getRotorSpeed",          function() assert(p.getRotorSpeed() ~= nil) end)
+        check("getInductorEngaged",     function() assert(p.getInductorEngaged() ~= nil) end)
+        check("getFluidFlowRateMax",    function() assert(p.getFluidFlowRateMax() ~= nil) end)
         check("getFluidFlowRateMaxMax", function() assert(p.getFluidFlowRateMaxMax() ~= nil) end)
-        check("mbIsAssembled",        function() assert(p.mbIsAssembled() ~= nil) end)
+        check("mbIsAssembled",          function() assert(p.mbIsAssembled() ~= nil) end)
 
-        -- Verify setters with safe readback
+        -- setActive: no-op write (set to current value) — safe on a running turbine
+        local curActive = p.getActive()
+        readback(p.getActive, p.setActive, curActive, curActive, "setActive")
+
+        -- setFluidFlowRateMax: ±1 from current, then restore
         local curFlow = p.getFluidFlowRateMax() or 0
         local maxFlow = p.getFluidFlowRateMaxMax() or 2000
         local testFlow = (curFlow > 10) and (curFlow - 1) or (curFlow + 1)
@@ -291,6 +295,7 @@ local function verifyPeripheral(p, role, reportFn)
         readback(p.getFluidFlowRateMax, p.setFluidFlowRateMax,
                  testFlow, curFlow, "setFluidFlowRateMax")
 
+        -- setInductorEngaged: toggle and restore
         local curCoil = p.getInductorEngaged()
         readback(p.getInductorEngaged, p.setInductorEngaged,
                  not curCoil, curCoil, "setInductorEngaged")
@@ -303,7 +308,11 @@ local function verifyPeripheral(p, role, reportFn)
         check("isActivelyCooled",     function() assert(p.isActivelyCooled() ~= nil) end)
         check("mbIsAssembled",        function() assert(p.mbIsAssembled() ~= nil) end)
 
-        -- Verify control rod setter with safe readback
+        -- setActive: no-op write (set to current value) — safe on a running reactor
+        local curActive = p.getActive()
+        readback(p.getActive, p.setActive, curActive, curActive, "setActive")
+
+        -- setControlRodLevel: ±1 from current, then restore
         local numRods = p.getNumberOfControlRods() or 0
         if numRods > 0 then
             local curLevel = p.getControlRodLevel(0) or 0
