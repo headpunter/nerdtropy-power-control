@@ -76,3 +76,4 @@ volumes:
   api_data:
   loki_data:
   influxdb_data:
+  source_code:
