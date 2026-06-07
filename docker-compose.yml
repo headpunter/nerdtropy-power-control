@@ -8,8 +8,10 @@ services:
       - source_code:/repo
     entrypoint: >
       sh -c "
+        REPO=http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project.git &&
         if [ ! -d /repo/.git ]; then
-          git clone http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project.git /repo
+          git -C /repo init &&
+          git -C /repo remote add origin $$REPO
         fi &&
         while true; do
           git -C /repo fetch origin main &&
@@ -23,7 +25,11 @@ services:
     build: ./api
     container_name: power-api
     working_dir: /repo/api
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: >
+      sh -c "
+        until [ -f /repo/api/main.py ]; do echo 'waiting for git-sync...'; sleep 2; done &&
+        exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+      "
     ports:
       - "8000:8000"
     volumes:
