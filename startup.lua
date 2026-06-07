@@ -7,7 +7,7 @@
 -- OTA updates pulled from Gitea on every boot.
 -- ============================================================
 
-local VERSION          = "3.6"
+local VERSION          = "3.7"
 local API_HOST         = "http://10.10.0.10:8000"
 local GITEA_RAW        = "http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project/raw/branch/main"
 local MONITOR_SIDE     = "right"
@@ -283,9 +283,9 @@ local function verifyPeripheral(p, role, reportFn)
         check("getFluidFlowRateMaxMax", function() assert(p.getFluidFlowRateMaxMax() ~= nil) end)
         check("mbIsAssembled",          function() assert(p.mbIsAssembled() ~= nil) end)
 
-        -- setActive: no-op write (set to current value) — safe on a running turbine
+        -- setActive: toggle off then restore
         local curActive = p.getActive()
-        readback(p.getActive, p.setActive, curActive, curActive, "setActive")
+        readback(p.getActive, p.setActive, not curActive, curActive, "setActive")
 
         -- setFluidFlowRateMax: ±1 from current, then restore
         local curFlow = p.getFluidFlowRateMax() or 0
@@ -308,9 +308,9 @@ local function verifyPeripheral(p, role, reportFn)
         check("isActivelyCooled",     function() assert(p.isActivelyCooled() ~= nil) end)
         check("mbIsAssembled",        function() assert(p.mbIsAssembled() ~= nil) end)
 
-        -- setActive: no-op write (set to current value) — safe on a running reactor
+        -- setActive: toggle off then restore
         local curActive = p.getActive()
-        readback(p.getActive, p.setActive, curActive, curActive, "setActive")
+        readback(p.getActive, p.setActive, not curActive, curActive, "setActive")
 
         -- setControlRodLevel: ±1 from current, then restore
         local numRods = p.getNumberOfControlRods() or 0
