@@ -110,6 +110,14 @@ class Database:
                     count INTEGER DEFAULT 0
                 );
             """)
+            # Migrate existing DBs — ADD COLUMN is idempotent via try/except
+            for col, defn in [
+                ("pending_command", "TEXT DEFAULT NULL"),
+            ]:
+                try:
+                    self._conn.execute(f"ALTER TABLE slaves ADD COLUMN {col} {defn}")
+                except Exception:
+                    pass
             for k, v in {
                 "mode": "SMART",
                 "turn_on_percent": "30",
@@ -120,17 +128,16 @@ class Database:
                 self._conn.execute(
                     "INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (k, v)
                 )
-            # Migrate existing DBs — ADD COLUMN is idempotent via try/except
             for col, defn in [
-                ("tune_phase", "TEXT DEFAULT 'needs_tune'"),
-                ("tune_steam", "REAL DEFAULT 0"),
-                ("tune_rpm",   "REAL DEFAULT 0"),
+                ("tune_phase",      "TEXT DEFAULT 'needs_tune'"),
+                ("tune_steam",      "REAL DEFAULT 0"),
+                ("tune_rpm",        "REAL DEFAULT 0"),
                 ("tune_stable_count", "INTEGER DEFAULT 0"),
             ]:
                 try:
                     self._conn.execute(f"ALTER TABLE slaves ADD COLUMN {col} {defn}")
                 except Exception:
-                    pass  # column already exists
+                    pass
             self._conn.commit()
 
     # ------------------------------------------------------------------ helpers
@@ -384,6 +391,29 @@ class Database:
                 "UPDATE slaves SET target_rpm=? WHERE uuid=?", (rpm, uuid)
             )
             self._conn.commit()
+
+    def set_pending_command(self, uuid: str, action: str, params: dict):
+        with self._lock:
+            self._conn.execute(
+                "UPDATE slaves SET pending_command=? WHERE uuid=?",
+                (json.dumps({"action": action, "params": params}), uuid),
+            )
+            self._conn.commit()
+
+    def pop_pending_command(self, uuid: str) -> Optional[dict]:
+        """Return and clear the pending command atomically."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT pending_command FROM slaves WHERE uuid=?", (uuid,)
+            ).fetchone()
+            if not row or not row["pending_command"]:
+                return None
+            cmd = json.loads(row["pending_command"])
+            self._conn.execute(
+                "UPDATE slaves SET pending_command=NULL WHERE uuid=?", (uuid,)
+            )
+            self._conn.commit()
+        return cmd
 
 
 db = Database()

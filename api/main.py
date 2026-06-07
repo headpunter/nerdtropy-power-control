@@ -158,6 +158,32 @@ async def target_rpm(req: TargetRpmRequest):
     return {"ok": True}
 
 
+@app.post("/api/reboot")
+async def reboot_all():
+    """Queue a reboot command for every online slave."""
+    slaves = db.get_all_slaves_dict()
+    queued = []
+    for uuid, s in slaves.items():
+        if s["online"]:
+            db.set_pending_command(uuid, "reboot", {})
+            db.log_command(uuid, "reboot", {}, "Remote reboot requested by user", "user")
+            queued.append(s["name"])
+    log_event("system", f"Reboot queued for: {', '.join(queued)}", {"event": "reboot"})
+    return {"ok": True, "queued": queued}
+
+
+@app.post("/api/reboot/{uuid}")
+async def reboot_one(uuid: str):
+    """Queue a reboot command for a single slave."""
+    if not db.slave_exists(uuid):
+        raise HTTPException(404, "slave not found")
+    db.set_pending_command(uuid, "reboot", {})
+    db.log_command(uuid, "reboot", {}, "Remote reboot requested by user", "user")
+    slave = db.get_slave(uuid)
+    log_event(slave.name, "Reboot queued", {"event": "reboot"})
+    return {"ok": True, "queued": [slave.name]}
+
+
 @app.get("/api/health")
 async def health():
     return {"ok": True, "uptime": time.time() - API_START}

@@ -49,6 +49,10 @@ class ControlEngine:
         slave = self.db.get_slave(uuid)
         if not slave or not slave.online:
             return None
+        pending = self.db.pop_pending_command(uuid)
+        if pending:
+            pending.setdefault("reason", "queued by user")
+            return pending
         if slave.role == "reactor":
             return self._reactor_command(slave)
         if slave.role == "turbine":

@@ -7,7 +7,7 @@
 -- OTA updates pulled from Gitea on every boot.
 -- ============================================================
 
-local VERSION          = "3.7"
+local VERSION          = "3.8"
 local API_HOST         = "http://10.10.0.10:8000"
 local GITEA_RAW        = "http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project/raw/branch/main"
 local MONITOR_SIDE     = "right"
@@ -374,6 +374,11 @@ local function executeCommand(action, params, periph, myRole, cachedCmd)
             pcall(periph.setFluidFlowRateMax, params.rate)
         end
         log("Flow rate -> " .. tostring(params.rate) .. " mB/t")
+
+    elseif action == "reboot" then
+        log("Remote reboot command received — rebooting...")
+        sleep(1)
+        os.reboot()
 
     elseif action == "scram" then
         if myRole == "reactor" and type(periph.setActive) == "function" then
