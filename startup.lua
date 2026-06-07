@@ -7,7 +7,7 @@
 -- OTA updates pulled from Gitea on every boot.
 -- ============================================================
 
-local VERSION          = "3.4"
+local VERSION          = "3.5"
 local API_HOST         = "http://10.10.0.10:8000"
 local GITEA_RAW        = "http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project/raw/branch/main"
 local MONITOR_SIDE     = "right"
@@ -233,6 +233,108 @@ local function collectData(role, p)
     return d
 end
 
+local function verifyPeripheral(p, role, reportFn)
+    local results = {}
+    local pass, fail = 0, 0
+
+    local function check(name, fn)
+        local ok, err = pcall(fn)
+        if ok then
+            print("  [OK] " .. name)
+            pass = pass + 1
+        else
+            print("  [FAIL] " .. name .. ": " .. tostring(err))
+            fail = fail + 1
+        end
+        table.insert(results, {test=name, ok=ok, err=ok and nil or tostring(err)})
+    end
+
+    local function readback(getter, setter, testVal, restoreVal, label)
+        -- write testVal, read back, restore
+        local ok1 = pcall(setter, testVal)
+        if not ok1 then
+            print("  [FAIL] " .. label .. ": setter threw error")
+            fail = fail + 1
+            table.insert(results, {test=label, ok=false, err="setter error"})
+            return
+        end
+        sleep(0.5)
+        local ok2, got = pcall(getter)
+        local matched = ok2 and (got == testVal)
+        pcall(setter, restoreVal)  -- always restore
+        if matched then
+            print("  [OK] " .. label .. " (set=" .. tostring(testVal) .. " read=" .. tostring(got) .. ")")
+            pass = pass + 1
+        else
+            print("  [FAIL] " .. label .. " (set=" .. tostring(testVal) .. " read=" .. tostring(got) .. ")")
+            fail = fail + 1
+        end
+        table.insert(results, {test=label, ok=matched, set=testVal, got=got})
+    end
+
+    print("--- Peripheral verification: " .. role .. " ---")
+
+    if role == "turbine" then
+        -- Verify all getters respond
+        check("getActive",            function() assert(p.getActive() ~= nil) end)
+        check("getRotorSpeed",        function() assert(p.getRotorSpeed() ~= nil) end)
+        check("getInductorEngaged",   function() assert(p.getInductorEngaged() ~= nil) end)
+        check("getFluidFlowRateMax",  function() assert(p.getFluidFlowRateMax() ~= nil) end)
+        check("getFluidFlowRateMaxMax", function() assert(p.getFluidFlowRateMaxMax() ~= nil) end)
+        check("mbIsAssembled",        function() assert(p.mbIsAssembled() ~= nil) end)
+
+        -- Verify setters with safe readback
+        local curFlow = p.getFluidFlowRateMax() or 0
+        local maxFlow = p.getFluidFlowRateMaxMax() or 2000
+        local testFlow = (curFlow > 10) and (curFlow - 1) or (curFlow + 1)
+        testFlow = math.max(0, math.min(maxFlow, testFlow))
+        readback(p.getFluidFlowRateMax, p.setFluidFlowRateMax,
+                 testFlow, curFlow, "setFluidFlowRateMax")
+
+        local curCoil = p.getInductorEngaged()
+        readback(p.getInductorEngaged, p.setInductorEngaged,
+                 not curCoil, curCoil, "setInductorEngaged")
+
+    elseif role == "reactor" then
+        -- Verify all getters respond
+        check("getActive",            function() assert(p.getActive() ~= nil) end)
+        check("getCasingTemperature", function() assert(p.getCasingTemperature() ~= nil) end)
+        check("getFuelAmount",        function() assert(p.getFuelAmount() ~= nil) end)
+        check("isActivelyCooled",     function() assert(p.isActivelyCooled() ~= nil) end)
+        check("mbIsAssembled",        function() assert(p.mbIsAssembled() ~= nil) end)
+
+        -- Verify control rod setter with safe readback
+        local numRods = p.getNumberOfControlRods() or 0
+        if numRods > 0 then
+            local curLevel = p.getControlRodLevel(0) or 0
+            local testLevel = (curLevel < 99) and (curLevel + 1) or (curLevel - 1)
+            readback(
+                function() return p.getControlRodLevel(0) end,
+                function(v) p.setControlRodLevel(0, v) end,
+                testLevel, curLevel, "setControlRodLevel"
+            )
+        end
+
+    elseif role == "battery" then
+        check("getEnergy",    function() assert(p.getEnergy() ~= nil) end)
+        check("getMaxEnergy", function() assert(p.getMaxEnergy() ~= nil) end)
+        check("getLastInput", function() assert(p.getLastInput() ~= nil) end)
+    end
+
+    local summary = string.format("Verification: %d passed, %d failed", pass, fail)
+    print(summary)
+    if reportFn then
+        reportFn({
+            event   = "verify",
+            role    = role,
+            passed  = pass,
+            failed  = fail,
+            results = results,
+        })
+    end
+    return fail == 0
+end
+
 local function executeCommand(action, params, periph, myRole, cachedCmd)
     params = params or {}
     if action == "set_reactor" then
@@ -355,6 +457,18 @@ local function runSlave()
             print("API unreachable, retrying in 5s...")
             sleep(5)
         end
+    end
+
+    print("Running peripheral verification...")
+    local verifyOk = verifyPeripheral(periph, myRole, function(vdata)
+        apiPost("/api/report", {
+            uuid    = myUuid,
+            version = VERSION,
+            data    = { verify = vdata },
+        })
+    end)
+    if not verifyOk then
+        print("WARNING: Some peripheral checks failed — check wiring")
     end
 
     print("Online. Heartbeat every " .. HEARTBEAT .. "s.")
