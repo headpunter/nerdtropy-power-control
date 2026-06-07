@@ -7,7 +7,7 @@
 -- OTA updates pulled from Gitea on every boot.
 -- ============================================================
 
-local VERSION          = "3.3"
+local VERSION          = "3.4"
 local API_HOST         = "http://10.10.0.10:8000"
 local GITEA_RAW        = "http://10.10.0.10:30008/headpunter/nerdtropy-minecraft-project/raw/branch/main"
 local MONITOR_SIDE     = "right"
@@ -139,7 +139,8 @@ local ROLE_PRIORITY = {"battery","reactor","turbine","energy_detector","unknown"
 local function safeCall(fn, ...)
     if type(fn) ~= "function" then return nil end
     local ok, r = pcall(fn, ...)
-    return ok and r or nil
+    if not ok then return nil end
+    return r
 end
 
 local function discoverPeripherals()
