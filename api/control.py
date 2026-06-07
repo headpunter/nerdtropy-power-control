@@ -316,6 +316,17 @@ class ControlEngine:
 
         # ── trimming: coils ON, proportional steam to lock 1800 ±5 ──────
         if phase == "trimming":
+            # Turbine stalled during trim — full retune
+            if rpm < 50:
+                self.db.set_tune_state(slave.uuid, "needs_tune", steam=0, rpm=0, stable=0)
+                self.db.log_command(
+                    slave.uuid, "tune_reset",
+                    {"rpm": rpm, "steam_mbt": steam_in},
+                    f"Auto-tune: turbine stalled during trim ({rpm:.0f} RPM) — retuning",
+                    "auto_tune",
+                )
+                return None
+
             if engaged is not True:
                 return {
                     "action": "set_inductor",
